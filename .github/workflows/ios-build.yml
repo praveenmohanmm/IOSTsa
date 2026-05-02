@@ -31,18 +31,11 @@ jobs:
       - name: Restore NuGet packages
         run: dotnet restore iOSTSA/iOSTSA.csproj
 
-      # ── Build (simulator, unsigned) ───────────────────────────────────
-      # ArchiveOnBuild=false + no code-signing = fast CI build that
-      # validates the code compiles. For a signed .ipa, add signing secrets.
+      # ── Build (simulator, Debug) ──────────────────────────────────────
+      # Debug + iossimulator-x64 never requires a signing certificate.
+      # Single-line command avoids any backslash-continuation edge cases.
       - name: Build iOS (simulator)
-        run: |
-          dotnet build iOSTSA/iOSTSA.csproj \
-            -f net10.0-ios \
-            -c Release \
-            -p:RuntimeIdentifier=iossimulator-x64 \
-            -p:ArchiveOnBuild=false \
-            -p:EnableCodeSigning=false \
-            --nologo
+        run: dotnet build iOSTSA/iOSTSA.csproj -f net10.0-ios -c Debug -p:RuntimeIdentifier=iossimulator-x64 --nologo
 
       # ── (Optional) Signed device build ────────────────────────────────
       # Uncomment and add these secrets to enable a signed .ipa for TestFlight:
