@@ -1,0 +1,151 @@
+@page "/settings"
+@using Microsoft.JSInterop
+@inject MauiAlertSettingsService SettingsService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Alert Settings</PageTitle>
+
+<div class="tsa-app">
+
+    <!-- ── Header ─────────────────────────────────────────────────────── -->
+    <div class="tsa-header">
+        <div class="tsa-header-brand">
+            <span class="tsa-header-icon">⚙</span>
+            <div class="tsa-header-text">
+                <h1>Alert Settings</h1>
+                <p>Adjust thresholds and radii</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Alert Tone ───────────────────────────────────────────────────── -->
+    <div class="tsa-card">
+        <div class="tsa-card-label">Alert Tone</div>
+
+        @foreach (var tone in _tones)
+        {
+            <div class="tsa-tone-row @(S.AlertTone == tone.Id ? "tsa-tone-row--selected" : "")"
+                 @onclick="() => SelectTone(tone.Id)">
+                <div class="tsa-tone-info">
+                    <span class="tsa-tone-name">@tone.Name</span>
+                    <span class="tsa-tone-desc">@tone.Description</span>
+                </div>
+                <div class="tsa-tone-actions">
+                    @if (S.AlertTone == tone.Id)
+                    {
+                        <span class="tsa-tone-badge">✓ Active</span>
+                    }
+                    <button class="tsa-btn-preview" @onclick:stopPropagation="true"
+                            @onclick="() => PreviewToneAsync(tone.Id)">▶ Preview</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- ── Alert radii ────────────────────────────────────────────────── -->
+    <div class="tsa-card">
+        <div class="tsa-card-label">Alert Radii</div>
+
+        <div class="tsa-slider-row">
+            <div class="tsa-slider-label">
+                <span>@S.MinSpeedKmh – @S.SpeedBreak1Kmh km/h radius</span>
+                <span class="tsa-slider-value">@S.RadiusBand1M m</span>
+            </div>
+            <input type="range" min="10" max="200" step="5"
+                   value="@S.RadiusBand1M"
+                   @oninput="e => SetAndSave(e, v => S.RadiusBand1M = v)" />
+        </div>
+
+        <div class="tsa-slider-row">
+            <div class="tsa-slider-label">
+                <span>@S.SpeedBreak1Kmh – @S.SpeedBreak2Kmh km/h radius</span>
+                <span class="tsa-slider-value">@S.RadiusBand2M m</span>
+            </div>
+            <input type="range" min="10" max="200" step="5"
+                   value="@S.RadiusBand2M"
+                   @oninput="e => SetAndSave(e, v => S.RadiusBand2M = v)" />
+        </div>
+
+        <div class="tsa-slider-row">
+            <div class="tsa-slider-label">
+                <span>@S.SpeedBreak2Kmh – @S.SpeedBreak3Kmh km/h radius</span>
+                <span class="tsa-slider-value">@S.RadiusBand3M m</span>
+            </div>
+            <input type="range" min="10" max="300" step="5"
+                   value="@S.RadiusBand3M"
+                   @oninput="e => SetAndSave(e, v => S.RadiusBand3M = v)" />
+        </div>
+
+        <div class="tsa-slider-row">
+            <div class="tsa-slider-label">
+                <span>@S.SpeedBreak3Kmh – @S.SpeedBreak4Kmh km/h radius</span>
+                <span class="tsa-slider-value">@S.RadiusBand4M m</span>
+            </div>
+            <input type="range" min="10" max="300" step="5"
+                   value="@S.RadiusBand4M"
+                   @oninput="e => SetAndSave(e, v => S.RadiusBand4M = v)" />
+        </div>
+
+        <div class="tsa-slider-row">
+            <div class="tsa-slider-label">
+                <span>@S.SpeedBreak4Kmh – @S.MaxSpeedKmh km/h radius</span>
+                <span class="tsa-slider-value">@S.RadiusBand5M m</span>
+            </div>
+            <input type="range" min="10" max="400" step="5"
+                   value="@S.RadiusBand5M"
+                   @oninput="e => SetAndSave(e, v => S.RadiusBand5M = v)" />
+        </div>
+    </div>
+
+    <!-- ── Actions ───────────────────────────────────────────────────── -->
+    <div class="tsa-controls">
+        <button class="tsa-btn tsa-btn--secondary" @onclick="ResetAsync">↺ Reset Defaults</button>
+        <button class="tsa-btn tsa-btn--secondary" @onclick='() => Nav.NavigateTo("/")'>← Back</button>
+    </div>
+
+</div>
+
+@code {
+    private AlertSettings S => SettingsService.Settings;
+
+    private record ToneOption(string Id, string Name, string Description);
+
+    private readonly ToneOption[] _tones =
+    [
+        new("triple-beep",  "Triple Beep",  "Three sharp C6 beeps — assertive & attention-grabbing"),
+        new("single-beep",  "Single Beep",  "One short C6 beep — subtle & quick"),
+        new("alert-chime",  "Alert Chime",  "Descending E6 → C6 → G5 chime — pleasant & clear"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+        => await SettingsService.LoadAsync();
+
+    private void SelectTone(string toneId)
+    {
+        S.AlertTone = toneId;
+        _ = SettingsService.SaveAsync();
+        StateHasChanged();
+    }
+
+    private async Task PreviewToneAsync(string toneId)
+    {
+        await JS.InvokeVoidAsync("tsaAudio.play", toneId);
+    }
+
+    private void SetAndSave(ChangeEventArgs e, Action<double> setter)
+    {
+        if (double.TryParse(e.Value?.ToString(), out var v))
+        {
+            setter(v);
+            _ = SettingsService.SaveAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        await SettingsService.ResetAsync();
+        StateHasChanged();
+    }
+}

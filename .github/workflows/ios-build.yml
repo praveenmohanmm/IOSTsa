@@ -1,0 +1,74 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build iOS (macOS)
+    runs-on: macos-15          # Xcode 16 + .NET 10 support
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── .NET 10 ──────────────────────────────────────────────────────
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # ── MAUI workload ─────────────────────────────────────────────────
+      - name: Install MAUI workload
+        run: dotnet workload install maui-ios --skip-sign-check
+
+      # ── Restore ───────────────────────────────────────────────────────
+      - name: Restore NuGet packages
+        run: dotnet restore iOSTSA/iOSTSA.csproj
+
+      # ── Build (simulator, unsigned) ───────────────────────────────────
+      # ArchiveOnBuild=false + no code-signing = fast CI build that
+      # validates the code compiles. For a signed .ipa, add signing secrets.
+      - name: Build iOS (simulator)
+        run: |
+          dotnet build iOSTSA/iOSTSA.csproj \
+            -f net10.0-ios \
+            -c Release \
+            -p:RuntimeIdentifier=iossimulator-x64 \
+            -p:ArchiveOnBuild=false \
+            -p:EnableCodeSigning=false \
+            --nologo
+
+      # ── (Optional) Signed device build ────────────────────────────────
+      # Uncomment and add these secrets to enable a signed .ipa for TestFlight:
+      #   IOS_CERTIFICATE_BASE64   — base64-encoded .p12 export
+      #   IOS_CERTIFICATE_PASSWORD — .p12 password
+      #   IOS_PROVISIONING_PROFILE — base64-encoded .mobileprovision
+      #
+      # - name: Import signing certificate
+      #   run: |
+      #     echo "${{ secrets.IOS_CERTIFICATE_BASE64 }}" | base64 --decode > cert.p12
+      #     security create-keychain -p "" build.keychain
+      #     security import cert.p12 -k build.keychain -P "${{ secrets.IOS_CERTIFICATE_PASSWORD }}" -T /usr/bin/codesign
+      #     security set-keychain-settings -lut 21600 build.keychain
+      #     security default-keychain -s build.keychain
+      #     security unlock-keychain -p "" build.keychain
+      #
+      # - name: Install provisioning profile
+      #   run: |
+      #     echo "${{ secrets.IOS_PROVISIONING_PROFILE }}" | base64 --decode > profile.mobileprovision
+      #     mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+      #     cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+      #
+      # - name: Build signed .ipa
+      #   run: |
+      #     dotnet publish iOSTSA/iOSTSA.csproj \
+      #       -f net10.0-ios \
+      #       -c Release \
+      #       -p:RuntimeIdentifier=ios-arm64 \
+      #       -p:ArchiveOnBuild=true \
+      #       --nologo

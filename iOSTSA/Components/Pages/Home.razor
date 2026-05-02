@@ -1,0 +1,353 @@
+@page "/"
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@inject MauiGeolocationService GeoService
+@inject TrafficSignalService SignalService
+@inject MauiAlertSettingsService SettingsService
+@inject IScreenWakeLock WakeLock
+@inject IHapticAlertService HapticService
+@inject IJSRuntime JS
+
+<PageTitle>Traffic Signal Alert</PageTitle>
+
+<div class="tsa-app">
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <div class="tsa-header">
+        <div class="tsa-header-brand">
+            <span class="tsa-header-icon">🚦</span>
+            <div class="tsa-header-text">
+                <h1>Traffic Signal Alert</h1>
+                <p>Alerts when approaching a signal</p>
+            </div>
+        </div>
+        <div class="tsa-header-actions">
+            <a class="tsa-settings-btn" href="settings" title="Settings">⚙</a>
+            <span class="tsa-status-dot @(GeoService.IsTracking ? "active" : "")"></span>
+        </div>
+    </div>
+
+    <!-- ── Out-of-range banner (alerts silenced) ──────────────────────── -->
+    @if (GeoService.IsTracking && AlertRadius is null && !string.IsNullOrEmpty(_speedText))
+    {
+        <div class="tsa-paused-banner">
+            @if (SpeedKmh < SettingsService.Settings.MinSpeedKmh)
+            {
+                <span>🛑 Too slow — alerts paused (&lt; @SettingsService.Settings.MinSpeedKmh km/h)</span>
+            }
+            else
+            {
+                <span>⚡ Too fast — alerts paused (&gt; @SettingsService.Settings.MaxSpeedKmh km/h)</span>
+            }
+        </div>
+    }
+
+    <!-- ── Alert banner ────────────────────────────────────────────────── -->
+    @if (_isAlertActive && _nearbySignals.Count > 0)
+    {
+        var first = _nearbySignals[0];
+        <div class="tsa-alert @_alertClass">
+            <div class="tsa-alert-header">
+                <span class="tsa-alert-icon">⚠</span>
+                <span class="tsa-alert-label">Signal Nearby</span>
+                <span class="tsa-alert-dist">@FormatDistance(first.DistanceMetres)</span>
+            </div>
+            <div class="tsa-alert-name">@first.Signal.IntersectionName</div>
+            <span class="tsa-alert-type">@first.Signal.IntersectionType</span>
+        </div>
+    }
+
+    <!-- ── Status message ──────────────────────────────────────────────── -->
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <div class="tsa-status @(_isError ? "tsa-status--error" : "")">@_statusMessage</div>
+    }
+
+    <!-- ── Closest signal card ──────────────────────────────────────────── -->
+    <div class="tsa-card">
+        <div class="tsa-card-label">Nearest Signal</div>
+        @{ var (dVal, dUnit) = SplitDistance(_closestDistanceText); }
+        <div class="tsa-signal-grid">
+            <div class="tsa-signal-info">
+                <div class="tsa-signal-name">@_closestSignalText</div>
+                @if (!string.IsNullOrEmpty(_speedText))
+                {
+                    <div class="tsa-speed-pill">
+                        <span class="tsa-speed-dot @(_isMoving ? "moving" : "stopped")"></span>
+                        <span class="tsa-speed-pill-val">@_speedText</span>
+                        <span class="tsa-speed-pill-label">@(_isMoving ? "moving" : "stopped")</span>
+                    </div>
+                }
+            </div>
+            <div class="tsa-dist-block">
+                <div class="tsa-dist-value">@dVal</div>
+                <div class="tsa-dist-unit">@dUnit</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Alert radius bar ──────────────────────────────────────────────── -->
+    <div class="tsa-card">
+        <div class="tsa-radius-bar">
+            <div class="tsa-radius-bar-label">
+                Alert radius
+                <span class="tsa-radius-bar-val">@(AlertRadius is null ? "—" : $"{AlertRadius} m")</span>
+            </div>
+            <div class="tsa-radius-legend">
+                <div class="tsa-radius-item"><span class="tsa-dot green"></span>≤@(AlertRadius?.ToString() ?? "—") m</div>
+                <div class="tsa-radius-item"><span class="tsa-dot orange"></span>≤60 m</div>
+                <div class="tsa-radius-item"><span class="tsa-dot red"></span>≤30 m</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Nearby signals list ──────────────────────────────────────────── -->
+    @if (_isAlertActive && _nearbySignals.Count > 0)
+    {
+        <div class="tsa-card">
+            <div class="tsa-card-label">Signals within alert radius</div>
+            @foreach (var item in _nearbySignals)
+            {
+                <div class="tsa-nearby-row">
+                    <span class="tsa-nearby-name">@item.Signal.IntersectionName</span>
+                    <span class="tsa-nearby-type">@item.Signal.IntersectionType</span>
+                    <span class="tsa-nearby-dist">@FormatDistance(item.DistanceMetres)</span>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- ── Loaded count + alert counter ───────────────────────────────── -->
+    @if (_signalsLoaded > 0)
+    {
+        <div class="tsa-status">@_signalsLoaded signals loaded · Alerts fired: @_alertsFired</div>
+    }
+
+    <!-- ── Controls ─────────────────────────────────────────────────────── -->
+    <div class="tsa-controls">
+        <button class="tsa-btn tsa-btn--start" @onclick="() => StartAsync()" disabled="@GeoService.IsTracking">
+            ▶ Start Tracking
+        </button>
+        <button class="tsa-btn tsa-btn--stop" @onclick="StopAsync" disabled="@(!GeoService.IsTracking)">
+            ■ Stop Tracking
+        </button>
+    </div>
+
+</div>
+
+@code {
+    // ── State ────────────────────────────────────────────────────────────
+    private string _closestSignalText   = "—";
+    private string _closestDistanceText = "—";
+    private string _statusMessage       = "Starting…";
+    private bool   _isError;
+    private bool   _isAlertActive;
+    private string _alertClass          = string.Empty;
+    private IReadOnlyList<(TrafficSignal Signal, double DistanceMetres)> _nearbySignals = [];
+    private int  _signalsLoaded;
+
+    // ── Motion & audio state ─────────────────────────────────────────────
+    /// <summary>Minimum speed in m/s to be considered moving (~5 km/h).</summary>
+    private const double MovingThresholdMs = 1.4;
+    private bool         _isMoving;
+    private double       _speedMs;
+    private string       _speedText = string.Empty;
+
+    /// <summary>
+    /// Signals that have already fired their alert this approach.
+    /// Cleared only when the signal exits the clear zone (radius + 50 m hysteresis).
+    /// </summary>
+    private readonly HashSet<int> _alertedSignalIds = [];
+    private int _alertsFired;
+
+    /// <summary>Re-entrancy guard — drops GPS updates that arrive while one is in-flight.</summary>
+    private bool _isUpdatingProximity;
+
+    /// <summary>Extra metres beyond alert radius before a signal becomes alertable again.</summary>
+    private const double ClearHysteresisM = 50.0;
+
+    private double SpeedKmh => _speedMs * 3.6;
+    /// <summary>Null when speed is outside the configured alertable range.</summary>
+    private double? AlertRadius => SettingsService.Settings.GetAlertRadius(SpeedKmh);
+
+    // ── Lifecycle ────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await SettingsService.LoadAsync();
+        GeoService.LocationChanged += OnLocationChanged;
+        GeoService.ErrorOccurred   += OnGeoError;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Auto-start on launch — works immediately in native MAUI (no audio unlock needed)
+        await StartAsync();
+    }
+
+    // ── Button handlers ──────────────────────────────────────────────────
+
+    private async Task StartAsync()
+    {
+        _isError = false;
+        _statusMessage = "Requesting GPS permission…";
+        StateHasChanged();
+
+        // Keep screen on so iOS doesn't suspend GPS
+        WakeLock.Enable();
+
+        // Pre-load the signals file so the first GPS hit is instant
+        if (_signalsLoaded == 0)
+        {
+            _statusMessage = "Loading signal data…";
+            StateHasChanged();
+            var signals = await SignalService.LoadSignalsAsync();
+            _signalsLoaded = signals.Count;
+        }
+
+        await GeoService.StartAsync();
+
+        if (GeoService.IsTracking)
+        {
+            _statusMessage = "Tracking active — updates every 500 ms.";
+        }
+        StateHasChanged();
+    }
+
+    private async Task StopAsync()
+    {
+        await GeoService.StopAsync();
+        WakeLock.Disable();
+        _isAlertActive       = false;
+        _nearbySignals       = [];
+        _alertedSignalIds.Clear();
+        _alertsFired         = 0;
+        _isUpdatingProximity = false;
+        _statusMessage       = "Tracking stopped.";
+        StateHasChanged();
+    }
+
+    // ── Geolocation callbacks (arrive on threadpool → marshal to UI thread) ─
+    private void OnLocationChanged(LocationResult loc)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            _isError   = false;
+            _speedMs   = loc.Speed;
+            _isMoving  = loc.Speed >= MovingThresholdMs;
+            _speedText = $"{loc.Speed * 3.6:F0} km/h";
+
+            await UpdateProximityAsync(loc.Latitude, loc.Longitude);
+            StateHasChanged();
+        });
+    }
+
+    private void OnGeoError(string message)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _isError       = true;
+            _statusMessage = message;
+            _isAlertActive = false;
+            _nearbySignals = [];
+            StateHasChanged();
+            return Task.CompletedTask;
+        });
+    }
+
+    // ── Proximity logic ──────────────────────────────────────────────────
+    private async Task UpdateProximityAsync(double lat, double lon)
+    {
+        // Drop this update if a previous one is still in-flight.
+        if (_isUpdatingProximity) return;
+        _isUpdatingProximity = true;
+
+        try
+        {
+            var radius = AlertRadius;
+
+            var (closest, closestDist) = await SignalService.GetClosestSignalAsync(lat, lon);
+            if (closest is not null)
+            {
+                _closestSignalText   = $"{closest.IntersectionName}  [{closest.IntersectionType}]";
+                _closestDistanceText = FormatDistance(closestDist);
+            }
+
+            // Suppress all alerts when speed is outside the configured range
+            if (radius is null)
+            {
+                _isAlertActive = false;
+                _nearbySignals = [];
+                return;
+            }
+
+            // Fetch signals within the CLEAR zone (alert radius + hysteresis)
+            var clearRadius  = radius.Value + ClearHysteresisM;
+            var inClearZone  = await SignalService.GetNearbySignalsAsync(lat, lon, clearRadius);
+
+            // Filter to the true alert radius
+            var nearby = inClearZone
+                .Where(n => n.DistanceMetres <= radius.Value)
+                .ToList();
+
+            // Expire alerted IDs only when the signal leaves the clear zone
+            var inClearZoneIds = inClearZone.Select(n => n.Signal.ObjectId).ToHashSet();
+            _alertedSignalIds.IntersectWith(inClearZoneIds);
+
+            // Signals within alert radius that haven't been alerted yet
+            var unalerted = nearby
+                .Where(n => !_alertedSignalIds.Contains(n.Signal.ObjectId))
+                .ToList();
+
+            _nearbySignals = unalerted;
+
+            if (unalerted.Count > 0)
+            {
+                var first = unalerted[0];
+
+                _isAlertActive = true;
+                _alertClass    = first.DistanceMetres <= 30 ? "tsa-alert--red"
+                               : first.DistanceMetres <= 60 ? "tsa-alert--orange"
+                                                            : "tsa-alert--green";
+
+                // Mark BEFORE awaiting JS so concurrent update can't double-fire
+                _alertedSignalIds.Add(first.Signal.ObjectId);
+                _alertsFired++;
+
+                // Haptic fires on the iPhone Taptic Engine.
+                // Apple Watch automatically mirrors notification-pattern haptics
+                // via "Haptic Alerts" — the wrist vibrates with no Watch app needed.
+                HapticService.Alert();
+
+                await JS.InvokeVoidAsync("tsaAudio.play", SettingsService.Settings.AlertTone);
+            }
+            else
+            {
+                _isAlertActive = false;
+            }
+        }
+        finally
+        {
+            _isUpdatingProximity = false;
+        }
+    }
+
+    private static string FormatDistance(double m) =>
+        m >= 1000 ? $"{m / 1000:F2} km" : $"{m:F0} m";
+
+    /// <summary>Splits "123 m" → ("123","m") and "1.23 km" → ("1.23","km").</summary>
+    private static (string value, string unit) SplitDistance(string text)
+    {
+        if (text == "—") return ("—", "");
+        var idx = text.LastIndexOf(' ');
+        return idx > 0 ? (text[..idx], text[(idx + 1)..]) : (text, "");
+    }
+
+    // ── Cleanup ──────────────────────────────────────────────────────────
+    public async ValueTask DisposeAsync()
+    {
+        GeoService.LocationChanged -= OnLocationChanged;
+        GeoService.ErrorOccurred   -= OnGeoError;
+        await GeoService.DisposeAsync();
+    }
+}

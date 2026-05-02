@@ -1,0 +1,35 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# NuGet
+.nuget/
+*.nupkg
+packages/
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# iOS build artifacts
+*.ipa
+*.dSYM
+*.xcarchive
+
+# Android (kept in project but not tracked)
+Platforms/Android/
+
+# Windows (not needed for iOS app)
+Platforms/Windows/
+
+# MAUI hot reload
+**/.hotreload/
+
+# Rider / JetBrains
+.idea/
+
+# Logs
+*.log
