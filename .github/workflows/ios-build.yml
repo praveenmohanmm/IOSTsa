@@ -22,9 +22,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # ── MAUI workload ─────────────────────────────────────────────────
-      - name: Install MAUI workload
-        run: dotnet workload install maui-ios --skip-sign-check
+      # ── MAUI workloads ────────────────────────────────────────────────
+      # Install both maui-ios and maccatalyst — the project targets both frameworks
+      - name: Install MAUI workloads
+        run: dotnet workload install maui-ios maccatalyst --skip-sign-check
 
       # ── Restore ───────────────────────────────────────────────────────
       - name: Restore NuGet packages
