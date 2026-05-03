@@ -1,8 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
     <PropertyGroup>
-        <!-- iOS + Mac Catalyst only — this is a native iOS app -->
-        <TargetFrameworks>net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+        <!-- iOS + Mac Catalyst only — this is a native iOS app.
+             Targets net9.0 because the net10.0 MAUI iOS workload bundles
+             iOS SDK 26.x which requires Xcode 26.3 — not yet available on
+             GitHub-hosted runners. Upgrade to net10.0 once runners catch up. -->
+        <TargetFrameworks>net9.0-ios;net9.0-maccatalyst</TargetFrameworks>
 
         <OutputType>Exe</OutputType>
         <RootNamespace>iOSTSA</RootNamespace>
@@ -25,6 +28,7 @@
 
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
+        <!-- Net9 MAUI minimum for iOS is 12.2; we set 15.0 (iPhone 6s+) which covers 99%+ of devices -->
     </PropertyGroup>
 
     <ItemGroup>
@@ -44,7 +48,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
     </ItemGroup>
 
 </Project>

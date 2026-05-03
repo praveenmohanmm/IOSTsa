@@ -9,24 +9,23 @@ on:
 jobs:
   build:
     name: Build iOS (macOS)
-    runs-on: macos-15          # Xcode 16 + .NET 10 support
+    runs-on: macos-15          # Xcode 16.4
 
     steps:
       # ── Checkout ─────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── .NET 10 ──────────────────────────────────────────────────────
-      # Pin to the 10.0.1xx feature band (GA Nov 2025, bundles iOS 18 SDK).
-      # The 10.0.2xx band (released Feb 2026) bundles iOS SDK 26.x which
-      # requires Xcode 26.3 — not yet available on GitHub-hosted runners.
-      - name: Setup .NET 10
+      # ── .NET 9 ───────────────────────────────────────────────────────
+      # Project targets net9.0-ios. The net10.0 MAUI iOS workload bundles
+      # iOS SDK 26.x which requires Xcode 26.3 — not yet on GitHub runners.
+      # .NET 9 MAUI targets iOS 18 SDK and works with Xcode 16.4.
+      - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.1xx'
+          dotnet-version: '9.0.x'
 
       # ── MAUI workloads ────────────────────────────────────────────────
-      # Install both maui-ios and maccatalyst — the project targets both frameworks
       - name: Install MAUI workloads
         run: dotnet workload install maui-ios maccatalyst --skip-sign-check
 
@@ -34,14 +33,12 @@ jobs:
       - name: Restore NuGet packages
         run: dotnet restore iOSTSA/iOSTSA.csproj
 
-      # ── Build (simulator, Debug) ──────────────────────────────────────
-      # Debug + iossimulator-x64 never requires a signing certificate.
-      # Single-line command avoids any backslash-continuation edge cases.
+      # ── Build (simulator, Debug — no signing needed) ──────────────────
       - name: Build iOS (simulator)
-        run: dotnet build iOSTSA/iOSTSA.csproj -f net10.0-ios -c Debug -p:RuntimeIdentifier=iossimulator-x64 --nologo
+        run: dotnet build iOSTSA/iOSTSA.csproj -f net9.0-ios -c Debug -p:RuntimeIdentifier=iossimulator-x64 --nologo
 
       # ── (Optional) Signed device build ────────────────────────────────
-      # Uncomment and add these secrets to enable a signed .ipa for TestFlight:
+      # Add these secrets to GitHub → Settings → Secrets to enable a signed .ipa:
       #   IOS_CERTIFICATE_BASE64   — base64-encoded .p12 export
       #   IOS_CERTIFICATE_PASSWORD — .p12 password
       #   IOS_PROVISIONING_PROFILE — base64-encoded .mobileprovision
@@ -62,10 +59,4 @@ jobs:
       #     cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
       #
       # - name: Build signed .ipa
-      #   run: |
-      #     dotnet publish iOSTSA/iOSTSA.csproj \
-      #       -f net10.0-ios \
-      #       -c Release \
-      #       -p:RuntimeIdentifier=ios-arm64 \
-      #       -p:ArchiveOnBuild=true \
-      #       --nologo
+      #   run: dotnet publish iOSTSA/iOSTSA.csproj -f net9.0-ios -c Release -p:RuntimeIdentifier=ios-arm64 -p:ArchiveOnBuild=true --nologo
