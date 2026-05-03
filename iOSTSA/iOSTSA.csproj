@@ -41,16 +41,14 @@
         <!-- Custom Fonts -->
         <MauiFont Include="Resources\Fonts\*" />
 
-        <!-- Traffic signal GeoJSON data (bundled as raw asset).
-             Use <Link> item metadata (not LogicalName) to set the in-bundle
-             destination path. MAUI 9.0.51 ignores LogicalName on MauiAsset
-             and falls back to the physical source path — which on CI resolves
-             to "../../../../../../work/..." (outside the bundle). <Link>
-             is the MSBuild-standard way to override the destination path and
-             MAUI's iOS packaging task does honour it. -->
-        <MauiAsset Include="Resources\Raw\data.json">
-            <Link>data.json</Link>
-        </MauiAsset>
+        <!-- Traffic signal GeoJSON data.
+             Embedded as an assembly resource rather than a MauiAsset because
+             MAUI 9.0.51 ignores both LogicalName and <Link> on MauiAsset items
+             and recomputes the bundle path from the absolute source path, which
+             on the CI runner produces "../../../../../../work/..." — outside the
+             app bundle.  EmbeddedResource is loaded via
+             Assembly.GetManifestResourceStream("data.json") in TrafficSignalService. -->
+        <EmbeddedResource Include="Resources\Raw\data.json" LogicalName="data.json" />
     </ItemGroup>
 
     <ItemGroup>

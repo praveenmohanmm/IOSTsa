@@ -13,8 +13,14 @@ public class TrafficSignalService
         if (_signals is not null)
             return _signals;
 
-        // Load the bundled GeoJSON from app package resources
-        await using var stream = await FileSystem.OpenAppPackageFileAsync("data.json");
+        // Load the bundled GeoJSON from the embedded assembly resource.
+        // (data.json is EmbeddedResource with LogicalName="data.json" — avoids
+        // a MAUI 9.0.51 bug where MauiAsset path resolution breaks on CI.)
+        await using var stream =
+            typeof(TrafficSignalService).Assembly.GetManifestResourceStream("data.json")
+            ?? throw new InvalidOperationException(
+                "Embedded resource 'data.json' not found. " +
+                "Check that iOSTSA.csproj has EmbeddedResource Include for data.json.");
         var collection = await JsonSerializer.DeserializeAsync<GeoJsonFeatureCollection>(
             stream,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = false }
