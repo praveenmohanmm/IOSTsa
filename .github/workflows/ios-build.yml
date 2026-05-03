@@ -24,12 +24,12 @@ jobs:
       # Why 9.0.100 specifically:
       #   dotnet workload install --from-rollback-file {"maui":"9.0.0"}
       #   looks up the NuGet package microsoft.net.sdk.maui.manifest-{band}.
-      #   Version 9.0.0 of that package exists ONLY for band 9.0.100 (the GA
-      #   release).  Later bands (9.0.200, 9.0.300+) don't have a 9.0.0
-      #   entry, and band 10.0.200 has no 9.0.0 entry either.
+      #   Version 9.0.51 of that package exists for band 9.0.100.
+      #   Later bands (9.0.200, 9.0.300+) don't have a 9.0.51 entry,
+      #   and band 10.0.200 has no 9.0.51 entry either.
       #
-      # MAUI 9.0.0 bundles iOS 18 SDK — compatible with Xcode 16.4.
-      # Later manifests (9.0.14+) require Xcode 26.3, not yet on runners.
+      # MAUI 9.0.51 (2025-04-29) bundles iOS 18 SDK — compatible with
+      # Xcode 16.4.  Later manifests (9.0.82+) require Xcode 26.3.
       - name: Setup .NET 9 (SDK 9.0.100 band)
         uses: actions/setup-dotnet@v4
         with:
@@ -41,7 +41,7 @@ jobs:
       # ── MAUI workloads ────────────────────────────────────────────────
       - name: Install MAUI workloads (pinned 9.0.0 — iOS 18 / Xcode 16)
         run: |
-          echo '{"microsoft.net.sdk.maui":"9.0.0"}' > /tmp/maui-rollback.json
+          echo '{"microsoft.net.sdk.maui":"9.0.51"}' > /tmp/maui-rollback.json
           dotnet workload install maui-ios maccatalyst \
             --from-rollback-file /tmp/maui-rollback.json \
             --skip-sign-check
