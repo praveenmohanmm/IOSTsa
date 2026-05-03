@@ -26,8 +26,16 @@ jobs:
           dotnet-version: '9.0.x'
 
       # ── MAUI workloads ────────────────────────────────────────────────
-      - name: Install MAUI workloads
-        run: dotnet workload install maui-ios maccatalyst --skip-sign-check
+      # Pin to MAUI 9.0.0 (the .NET 9 GA release, Nov 2024).
+      # That manifest bundles iOS 18 SDK which works with Xcode 16.4.
+      # Later manifests (9.0.14+) upgraded to iOS SDK 26.2 which requires
+      # Xcode 26.3 — not yet available on any GitHub-hosted runner.
+      - name: Install MAUI workloads (pinned 9.0.0 — iOS 18 / Xcode 16)
+        run: |
+          echo '{"microsoft.net.sdk.maui":"9.0.0"}' > /tmp/maui-rollback.json
+          dotnet workload install maui-ios maccatalyst \
+            --from-rollback-file /tmp/maui-rollback.json \
+            --skip-sign-check
 
       # ── Restore ───────────────────────────────────────────────────────
       - name: Restore NuGet packages
