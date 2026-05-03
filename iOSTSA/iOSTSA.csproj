@@ -41,8 +41,11 @@
         <!-- Custom Fonts -->
         <MauiFont Include="Resources\Fonts\*" />
 
-        <!-- Traffic signal GeoJSON data (bundled as raw asset) -->
-        <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+        <!-- Traffic signal GeoJSON data (bundled as raw asset).
+             Explicit LogicalName avoids a MAUI wildcard-path bug where
+             %(RecursiveDir)%(Filename)%(Extension) resolves to the full
+             source path on CI runners, triggering "outside app bundle". -->
+        <MauiAsset Include="Resources\Raw\data.json" LogicalName="data.json" />
     </ItemGroup>
 
     <ItemGroup>
