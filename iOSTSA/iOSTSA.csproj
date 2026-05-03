@@ -42,10 +42,15 @@
         <MauiFont Include="Resources\Fonts\*" />
 
         <!-- Traffic signal GeoJSON data (bundled as raw asset).
-             Explicit LogicalName avoids a MAUI wildcard-path bug where
-             %(RecursiveDir)%(Filename)%(Extension) resolves to the full
-             source path on CI runners, triggering "outside app bundle". -->
-        <MauiAsset Include="Resources\Raw\data.json" LogicalName="data.json" />
+             Use <Link> item metadata (not LogicalName) to set the in-bundle
+             destination path. MAUI 9.0.51 ignores LogicalName on MauiAsset
+             and falls back to the physical source path — which on CI resolves
+             to "../../../../../../work/..." (outside the bundle). <Link>
+             is the MSBuild-standard way to override the destination path and
+             MAUI's iOS packaging task does honour it. -->
+        <MauiAsset Include="Resources\Raw\data.json">
+            <Link>data.json</Link>
+        </MauiAsset>
     </ItemGroup>
 
     <ItemGroup>
